@@ -1,7 +1,7 @@
 import pygame
 from settings import WIDTH, HEIGHT, FPS
 from player import Player
-from Level1 import Level1
+from level0 import Level0
 from camera import Camera
 from textbox import TextBox
 from choice_textbox import ChoiceTextBox
@@ -15,8 +15,8 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 
 # ---------- LOAD GAME OBJECTS ----------
-level = Level1()
-player = Player(level.spawn_pos)
+current_level = Level0()
+player = Player(current_level.spawn_pos)
 camera = Camera(WIDTH, HEIGHT)
 
 font = pygame.font.Font(None, 24)
