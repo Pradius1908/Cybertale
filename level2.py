@@ -1,9 +1,17 @@
 import pygame
 from pytmx.util_pygame import load_pygame
 
-class Level0:
+class Level2:
     def __init__(self):
-        self.tmx = load_pygame("maps/level0.tmx")
+        # We assume the user has created or will create maps/level2.tmx
+        # If not, this will crash. But based on the request, we must implement the logic.
+        try:
+            self.tmx = load_pygame("maps/level2.tmx")
+        except FileNotFoundError:
+            print("ERROR: maps/level2.tmx not found. Transition will fail.")
+            # Fallback to level1 map for stability if needed, or just crash
+            # For now, let's just let it crash so the user knows to create the map
+            raise
 
         self.tile_w = self.tmx.tilewidth
         self.tile_h = self.tmx.tileheight
@@ -12,12 +20,9 @@ class Level0:
         self.pixel_height = self.tmx.height * self.tile_h
 
         self.walls = []
-        self.spawn_pos = (100, 100)
-        self.door = None
+        self.spawn_pos = (200, 200)
 
         for obj in self.tmx.objects:
-
-            cls = obj.type or getattr(obj, "class_", None)
             if obj.type == "wall":
                 self.walls.append(
                     pygame.Rect(obj.x, obj.y, obj.width, obj.height)
@@ -27,14 +32,6 @@ class Level0:
                 self.spawn_pos = (
                     int(obj.x + obj.width // 2),
                     int(obj.y + obj.height // 2)
-                )
-
-            elif cls == "door":
-                self.door = pygame.Rect(
-                    int(obj.x),
-                    int(obj.y),
-                    int(obj.width),
-                    int(obj.height)
                 )
 
     def draw(self, screen, camera):
@@ -50,7 +47,4 @@ class Level0:
                     screen.blit(tile, camera.apply(rect))
 
     def get_solid_walls(self):
-        solids = self.walls[:]
-        if self.door:
-            solids.append(self.door)
-        return solids
+        return self.walls[:]
