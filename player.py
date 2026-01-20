@@ -18,12 +18,76 @@ class Player:
         self.hitbox = pygame.Rect(0, 0, 16, 12)
         self.hitbox.midbottom = self.rect.midbottom
 
-        # ---- HP ----
+        # ---- HP & STATS ----
         self.max_hp = 120
         self.hp = 120
-        self.xp = XP
-
+        self.base_attack = 0  # Start at 0 so total damage = weapon damage initially
+        
+        # ---- LEVEL SYSTEM ----
+        self.level = 1
+        self.xp = 0
+        
         self.weapon = None
+
+        # Level Calculation
+        self.next_level_xp = 100
+        self.level_increment = 100
+
+    def calculate_level_threshold(self):
+        # We want: Lvl 1->100. Lvl 2->300 (100+200). Lvl 3->600 (300+300).
+        # But user said "limit increment by 100".
+        # Current: 100.
+        # Next: Current + (CurrentIncrement + 100).
+        pass
+
+    def gain_xp(self, amount):
+        self.xp += amount
+        print(f"Gained {amount} XP. Total: {self.xp}/{self.next_level_xp}")
+        while self.xp >= self.next_level_xp:
+            self.level_up()
+
+    def level_up(self):
+        self.level += 1
+        
+        # Difficulty scales: 100, 200, 300... for EACH level.
+        self.level_increment += 100 
+        self.next_level_xp += self.level_increment
+        
+        self.max_hp += 20
+        self.hp = self.max_hp
+        self.base_attack += 2
+        print(f"Level Up! Level: {self.level}, Max HP: {self.max_hp}, Attack: {self.base_attack}, Next XP: {self.next_level_xp}")
+
+    def teleport(self, pos):
+        self.rect.center = pos
+        self.hitbox.midbottom = self.rect.midbottom
+
+    def to_dict(self):
+        return {
+            "hp": self.hp,
+            "max_hp": self.max_hp,
+            "xp": self.xp,
+            "level": self.level,
+            "base_attack": self.base_attack,
+            "next_level_xp": self.next_level_xp,
+            "weapon": self.weapon.to_dict() if self.weapon else None
+        }
+
+    def load_data(self, data):
+        self.hp = data.get("hp", 100)
+        self.max_hp = data.get("max_hp", 100)
+        self.xp = data.get("xp", 0)
+        self.level = data.get("level", 1)
+        self.base_attack = data.get("base_attack", 0)
+        self.next_level_xp = data.get("next_level_xp", 100)
+        
+        wd = data.get("weapon")
+        if wd:
+            from weapon import Weapon
+            self.weapon = Weapon.from_dict(wd)
+        else:
+            self.weapon = None
+
 
     def update(self, keys):
         moved = False

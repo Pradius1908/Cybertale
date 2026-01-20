@@ -8,6 +8,7 @@ from level2 import Level2
 from choice_textbox import ChoiceTextBox
 from password_textbox import PasswordTextBox
 from weapon import Weapon
+from save_manager import SaveManager
 
 INTERACT_KEY = pygame.K_e
 NPC_PROMPT_DELAY = 1000  # ms
@@ -18,9 +19,22 @@ clock = pygame.time.Clock()
 font = pygame.font.Font(None, 28)
 
 # ---------- START ----------
-current_level = Level0()
-player = Player(current_level.spawn_pos)
-camera = Camera(WIDTH, HEIGHT)
+# We delay Level creation until "New Game" or "Continue"
+current_level = None
+player = None
+camera = None
+
+game_state = "TITLE"
+title_menu = ChoiceTextBox(
+    ["CYBERTALE", "Select an option:"],
+    ["New Game", "Continue", "Exit"],
+    font
+)
+
+# Temp init for menu drawing if needed, but we'll handle it in loop
+camera = Camera(WIDTH, HEIGHT) # Needed for sizing? No, Title uses screen coords.
+
+# ---------- LEVEL 0 DOOR ----------
 
 # ---------- LEVEL 0 DOOR ----------
 door_choice = None
@@ -60,12 +74,31 @@ WEAPON_DIALOGUE = [
     "You obtained a weapon."
 ]
 
+# ---------- TROJAN ----------
+trojan_dialogue = None
+trojan_choice = None
+trojan_stage = 0  # 0: First offer, 1: Second offer, 2: Done
+trojan_expecting_choice = False
+
+TROJAN_OFFER_1 = [
+    "Psst... over here.",
+    "I can optimize your weapon's drivers.",
+    "Just 10 XP. Small price for power."
+]
+
+TROJAN_OFFER_2 = [
+    "Nice doing business.",
+    "I've got a kernel-level exploit for you.",
+    "20 XP. It'll make you unstoppable."
+]
+
 # ---------- COMBAT (DIALOGUE-BASED) ----------
-current_enemy = None
+current_enemies = []
+combat_target = None
 combat_choice = None
 combat_message = None
 combat_active = False
-combat_active = False
+player_backfire = False
 awaiting_attack_password = False
 password_mode = None
 
@@ -75,9 +108,10 @@ death_message = None
 
 # ---------- HELPERS ----------
 def get_player_damage(player):
+    dmg = player.base_attack
     if player.weapon:
-        return player.weapon.damage
-    return 5
+        dmg += player.weapon.damage
+    return dmg
 
 def draw_hp_bar(screen, x, y, w, h, hp, max_hp):
     ratio = max(0, hp / max_hp)
@@ -89,13 +123,17 @@ def draw_hp_bar(screen, x, y, w, h, hp, max_hp):
     pygame.draw.rect(screen, color, (x, y, int(w * ratio), h))
     pygame.draw.rect(screen, (255, 255, 255), (x, y, w, h), 2)
 
-def draw_xp_bar(screen, x, y, w, h, xp, max_xp):
-    ratio = min(1.0, max(0, xp / max_xp))
+def draw_xp_bar(screen, x, y, w, h, xp, max_xp=100):
+    ratio = (xp % 100) / 100.0
     color = (0, 200, 255)  # Cyan/Blue
 
     pygame.draw.rect(screen, (40, 40, 40), (x, y, w, h))
     pygame.draw.rect(screen, color, (x, y, int(w * ratio), h))
     pygame.draw.rect(screen, (255, 255, 255), (x, y, w, h), 2)
+    
+    # Draw Level Text
+    lvl_text = font.render(f"Lvl {player.level}", True, (255, 255, 255))
+    screen.blit(lvl_text, (x + w + 10, y - 2))
 
 # ---------- MAIN LOOP ----------
 running = True
@@ -107,6 +145,55 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        # ---- TITLE SCREEN ----
+        if game_state == "TITLE":
+            if title_menu and event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_a:
+                    title_menu.move_selection("left")
+                elif event.key == pygame.K_d:
+                    title_menu.move_selection("right")
+                elif event.key == INTERACT_KEY:
+                    if title_menu.next_page():
+                        choice = title_menu.confirm()
+                        
+                        if choice == "New Game":
+                            current_level = Level0()
+                            player = Player(current_level.spawn_pos)
+                            camera = Camera(WIDTH, HEIGHT)
+                            game_state = "PLAYING"
+                            # Reset flags
+                            door_used = False
+                            weapon_obtained = False
+                            
+                        elif choice == "Continue":
+                            data = SaveManager.load_game()
+                            if data:
+                                idx = data.get("level_index", 0)
+                                if idx == 0: current_level = Level0()
+                                elif idx == 1: current_level = Level1()
+                                elif idx == 2: current_level = Level2()
+                                else: current_level = Level0()
+                                
+                                player = Player(current_level.spawn_pos)
+                                player.load_data(data["player"])
+                                camera = Camera(WIDTH, HEIGHT)
+                                game_state = "PLAYING"
+                                
+                                # Restore logic flags if needed?
+                                # Simplified: If level > 0, assume door used.
+                                if idx > 0: door_used = True
+                                if player.weapon: weapon_obtained = True
+                                if idx >= 2: weapon_obtained = True # Force if in Lvl2
+                            else:
+                                # No save found, maybe flash text?
+                                # For now, just treat as New Game or do nothing?
+                                # Let's restart menu text to say "No Save".
+                                title_menu = ChoiceTextBox(["No Save Data found.", "Select option:"], ["New Game", "Exit"], font)
+
+                        elif choice == "Exit":
+                            running = False
+            continue # Skip other events if in TITLE
 
         # ---- DOOR ----
         if door_choice and event.type == pygame.KEYDOWN:
@@ -122,13 +209,15 @@ while running:
                     if result == "Yes":
                         if isinstance(current_level, Level0):
                             current_level = Level1()
-                            player = Player(current_level.spawn_pos)
+                            player.teleport(current_level.spawn_pos)
                             camera.reset()
                             door_used = True
+                            SaveManager.save_game(player, 1)
                         elif isinstance(current_level, Level1):
                             current_level = Level2()
-                            player = Player(current_level.spawn_pos)
+                            player.teleport(current_level.spawn_pos)
                             camera.reset()
+                            SaveManager.save_game(player, 2)
 
         # ---- NPC DIALOGUE ----
         elif npc_dialogue and event.type == pygame.KEYDOWN:
@@ -155,21 +244,71 @@ while running:
                     if result == "Yes":
                         player_dead = True
                         death_message = ChoiceTextBox(
-                            ["You trusted the wrong entity.", "You crumble into garbage data."],
-                            ["Respawn"],
+                            ["Fatal Error. Respawn?"],
+                            ["Yes"],
                             font
                         )
                     else:
                         if npc_prompt_count < len(NPC_PROMPTS):
                             npc_prompt_pending = True
                             npc_prompt_timer = now
+        
+        # ---- TROJAN DIALOGUE ----
+        elif trojan_dialogue and event.type == pygame.KEYDOWN:
+            if event.key == INTERACT_KEY:
+                if trojan_dialogue.next_page():
+                    trojan_dialogue = None
+                    # Only open choice if we were expecting one (i.e. not closing a success/error message)
+                    if trojan_expecting_choice:
+                        trojan_choice = ChoiceTextBox(
+                            ["Accept the upgrade?"],
+                            ["Yes", "No"],
+                            font
+                        )
+                        trojan_expecting_choice = False # Consumed
+
+        # ---- TROJAN CHOICE ----
+        elif trojan_choice and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_a:
+                trojan_choice.move_selection("left")
+            elif event.key == pygame.K_d:
+                trojan_choice.move_selection("right")
+            elif event.key == INTERACT_KEY:
+                if trojan_choice.next_page():
+                    result = trojan_choice.confirm()
+                    trojan_choice = None
+                    
+                    if result == "Yes":
+                        cost = 10 if trojan_stage == 0 else 20
+                        if player.xp >= cost:
+                            player.xp -= cost
+                            if trojan_stage == 0:
+                                # First Offer: Damage Nerf
+                                if player.weapon:
+                                    player.weapon.damage_modifier = 0.5
+                                    print("Weapon damage reduced by 50%")
+                                trojan_stage = 1
+                                trojan_dialogue = ChoiceTextBox([" optimization_complete.exe executed."], ["OK"], font) # User feedback
+                            elif trojan_stage == 1:
+                                # Second Offer: Jamming
+                                if player.weapon:
+                                    player.weapon.jam_chance = 0.3
+                                    print("Weapon jam chance set to 30%")
+                                trojan_stage = 2
+                                trojan_dialogue = ChoiceTextBox([" kernel_patch.dll installed."], ["OK"], font) # User feedback
+                        else:
+                            # Not enough XP
+                             trojan_dialogue = ChoiceTextBox([f"Error: Insufficient resources. Need {cost} XP."], ["OK"], font)
+                    else:
+                        # Refused
+                        pass
 
         # ---- COMBAT MESSAGE ----
         elif combat_message and event.type == pygame.KEYDOWN:
             if event.key == INTERACT_KEY:
                 if combat_message.next_page():
                     combat_message = None
-                    if combat_active and current_enemy:
+                    if combat_active and current_enemies:
                         combat_choice = ChoiceTextBox(
                             ["Choose your action:"],
                             ["Attack", "Defend"],
@@ -188,26 +327,82 @@ while running:
                      combat_choice = None
 
                      if action == "Attack":
-                         if player.weapon:
-                                password_box = PasswordTextBox(
-                                    "Enter weapon password:",
-                                    font
-                                )
-                                awaiting_attack_password = True
-                                password_mode = "attack"
-                                log = []
+                         # Check for Jamming
+                         jammed = False
+                         import random
+                         if player.weapon and random.random() < player.weapon.jam_chance:
+                             jammed = True
+                        
+                         if jammed:
+                             # Calc Enemy Retaliation immediately for jamming
+                             total_dmg = 0
+                             log = ["ERROR: Weapon driver failure.", "Attack aborted."]
+                             for enemy in current_enemies:
+                                 total_dmg += enemy.damage
+                                 # Backfire chance check (only if worm hits you?) 
+                                 # User said "when worms deal damage... can make weapon backfire"
+                                 # We'll set the flag for NEXT turn.
+                                 if hasattr(enemy, "backfire_chance") and random.random() < enemy.backfire_chance:
+                                     player_backfire = True
+                                     log.append(f"WARNING: {enemy.type} corrupted your drivers!")
+
+                             player.hp -= total_dmg
+                             if total_dmg > 0:
+                                log.append(f"You took {total_dmg} damage.")
+                             
+                             combat_message = ChoiceTextBox(log, ["OK"], font)
+                             
+                             if player.hp <= 0:
+                                 combat_active = False
+                                 current_enemies = []
+                                 player_dead = True
+                                 death_message = ChoiceTextBox(
+                                     ["SYSTEM FAILURE. Respawn?"],
+                                     ["Yes"],
+                                     font
+                                 ) 
+
+                         elif player.weapon:
+                                # Target Selection if multiple
+                                if len(current_enemies) > 1:
+                                    # Create a simple choice box for targets? 
+                                    # ChoiceTextBox supports text options.
+                                    # We'll map selection index to enemy index.
+                                    # Assuming max 2 enemies for now (Tag Battle).
+                                    target_names = [e.type for e in current_enemies]
+                                    # We need a way to know WHICH was picked. 
+                                    # Temporarily hijack combat_choice for targeting? Or new box?
+                                    # Let's use a new state: combat_target_selection
+                                    pass # Implemented via nested state or simplify?
+                                    # SIMPLIFY: Just target [0] for now or use specific logic?
+                                    # User requested "fight off a virus and a worm".
+                                    # I should implement targeting.
+                                    # Let's skip PasswordBox for a second and show TargetBox
+                                    combat_choice = ChoiceTextBox(["Select Target:"], target_names, font)
+                                    password_mode = "target_selection" # Valid hack?
+                                else:
+                                    combat_target = current_enemies[0]
+                                    password_box = PasswordTextBox("Enter weapon password:", font)
+                                    awaiting_attack_password = True
+                                    password_mode = "attack"
+                                    log = []
+
                          else:
                              combat_active = False
-                             current_enemy = None
+                             current_enemies = []
                              player_dead = True
                              death_message = ChoiceTextBox(
-                                 ["Fatal Error: Weapon module missing.", "You crumble into garbage data."],
-                                 ["Respawn"],
+                                 ["Fatal Error: No Weapon. Respawn?"],
+                                 ["Yes"],
                                  font
                              )
 
                      elif action == "Defend":
-                         dmg = current_enemy.damage // 2
+                         total_dmg = 0
+                         for enemy in current_enemies:
+                             total_dmg += enemy.damage
+                         
+                         dmg = total_dmg // 2
                          player.hp -= dmg
                          combat_message = ChoiceTextBox(
                              ["You defend yourself.",
@@ -218,15 +413,13 @@ while running:
 
                          if player.hp <= 0:
                              combat_active = False
-                             current_enemy = None
+                             current_enemies = []
                              player_dead = True
                              death_message = ChoiceTextBox(
-                                 ["You crumble into garbage data."],
-                                 ["Respawn"],
+                                 ["SYSTEM FAILURE. Respawn?"],
+                                 ["Yes"],
                                  font
                              )
-
-
 
         # ---- DEATH ----
         elif death_message and event.type == pygame.KEYDOWN:
@@ -234,8 +427,15 @@ while running:
                 if death_message.next_page():
                     player_dead = False
                     death_message = None
-                    player = Player(current_level.spawn_pos)
+                    current_enemies = [] 
+                    player.teleport(current_level.spawn_pos)
                     camera.reset()
+                    player.hp = player.max_hp
+                    
+                    # Reset all enemies HP
+                    if current_level and hasattr(current_level, "enemies"):
+                        for e in current_level.enemies:
+                            e.hp = e.max_hp
 
                     npc_triggered = False
                     npc_prompt_count = 0
@@ -243,6 +443,8 @@ while running:
 
                     weapon_dialogue = None
                     password_box = None
+                    
+                    trojan_stage = 0
 
         # ---- WEAPON ----
         elif weapon_dialogue and event.type == pygame.KEYDOWN:
@@ -254,6 +456,32 @@ while running:
                         font
                     )
                     password_mode = "weapon"
+
+        # ---- TARGET SELECTION (Reuse Combat Choice) ----
+        elif password_mode == "target_selection" and combat_choice and event.type == pygame.KEYDOWN:
+             if event.key == pygame.K_a:
+                combat_choice.move_selection("left")
+             elif event.key == pygame.K_d:
+                combat_choice.move_selection("right")
+             elif event.key == INTERACT_KEY:
+                 if combat_choice.next_page():
+                     pick = combat_choice.confirm() # Returns name string, e.g. "worm_tier3"
+                     # Find index
+                     idx = 0
+                     for i, e in enumerate(current_enemies):
+                         if e.type == pick:
+                             idx = i
+                             break
+                     combat_target = current_enemies[idx]
+                     combat_choice = None
+                     password_mode = None
+                     
+                     # Now go to password
+                     password_box = PasswordTextBox("Enter weapon password:", font)
+                     awaiting_attack_password = True
+                     password_mode = "attack"
+                     log = []
+
 
         # ---- PASSWORD ----
         elif password_box and event.type == pygame.KEYDOWN:
@@ -269,51 +497,113 @@ while running:
                 # --- ATTACK RESOLUTION ---
                 elif password_mode == "attack":
                     log = []
+                    
+                    # BACKFIRE CHECK
+                    backfire_triggered = False
+                    if player_backfire:
+                        import random
+                        if random.random() < 0.6: # 60% chance to backfire
+                             backfire_triggered = True
+                             raw_dmg = player.weapon.damage + player.base_attack
+                             dmg = int(raw_dmg * 0.5) # Reduced to 50% as per user request
+                             player.hp -= dmg
+                             log.append("CRITICAL ERROR: Attack Backfired!")
+                             log.append(f"You hit yourself for {dmg} damage.")
+                             player_backfire = False
+                        else:
+                             log.append("System stabilized. Backfire avoided.")
+                             player_backfire = False
 
-                    if entered == player.weapon.password:
-                        dmg = player.weapon.damage
-                        current_enemy.hp -= dmg
-                        log.append("Password accepted.")
-                        log.append(f"You dealt {dmg} damage.")
-                    else:
-                        log.append("Password rejected.")
-                        log.append("Your attack failed.")
+                    if not backfire_triggered:
+                        if entered == player.weapon.password:
+                            dmg = player.weapon.damage + player.base_attack
+                            if combat_target in current_enemies:
+                                combat_target.hp -= dmg
+                                log.append("Password accepted.")
+                                log.append(f"You dealt {dmg} damage to {combat_target.type}.")
+                        else:
+                            log.append("Password rejected.")
+                            log.append("Your attack failed.")
 
-                    # Enemy retaliates if alive
-                    if current_enemy.hp > 0:
-                        player.hp -= current_enemy.damage
-                        log.append(f"You took {current_enemy.damage} damage.")
+                    # Enemies retaliate
+                    total_dmg = 0
+                    import random
+                    for enemy in current_enemies:
+                        if enemy.hp > 0:
+                            total_dmg += enemy.damage
+                            if hasattr(enemy, "backfire_chance") and random.random() < enemy.backfire_chance:
+                                player_backfire = True
+                                log.append(f"WARNING: {enemy.type} corrupted drivers!")
+
+                    if total_dmg > 0:
+                        player.hp -= total_dmg
+                        log.append(f"You took {total_dmg} damage.")
 
                     # --- PLAYER DEAD ---
                     if player.hp <= 0:
                         combat_active = False
-                        current_enemy = None
+                        current_enemies = []
                         player_dead = True
                         death_message = ChoiceTextBox(
-                            ["You crumble into garbage data."],
-                            ["Respawn"],
+                            ["SYSTEM FAILURE. Respawn?"],
+                            ["Yes"],
                             font
                         )
 
-                    # --- ENEMY DEAD ---
-                    elif current_enemy.hp <= 0:
+                    # --- ENEMIES UPDATE ---
+                    # Remove dead enemies
+                    alive_enemies = []
+                    xp_gain = 0
+                    for enemy in current_enemies:
+                        if enemy.hp <= 0:
+                            xp_gain += enemy.xp_reward
+                            log.append(f"{enemy.type} terminated.")
+                            if enemy in current_level.enemies:
+                                current_level.enemies.remove(enemy)
+                        else:
+                            alive_enemies.append(enemy)
+                    
+                    current_enemies = alive_enemies
+
+                    if not current_enemies:
+                        # VICTORY
                         combat_active = False
-                        player.xp += current_enemy.xp_reward
-                        current_level.enemies.remove(current_enemy)
+                        player.gain_xp(xp_gain)
                         combat_message = ChoiceTextBox(
-                            ["Enemy terminated.", current_enemy.lore, f"XP Gained: {current_enemy.xp_reward}"],
+                            ["Threats eliminated.", f"Total XP Gained: {xp_gain}"],
                             ["OK"],
                             font
                         )
-                        current_enemy = None
-
-                    # --- COMBAT CONTINUES ---
                     else:
-                        combat_active = True  # 🔑 IMPORTANT
+                        combat_active = True
                         combat_message = ChoiceTextBox(log, ["OK"], font)
 
                 password_box = None
                 password_mode = None
+
+        # ---- INTERACTION (KEYDOWN) ----
+        elif event.type == pygame.KEYDOWN and event.key == INTERACT_KEY:
+            if not any([door_choice, npc_dialogue, npc_choice_box, weapon_dialogue, password_box, combat_choice, combat_message, death_message, trojan_dialogue, trojan_choice]):
+                
+                # ---- LEVEL 0 DOOR ----
+                if isinstance(current_level, Level0) and current_level.door and not door_used:
+                    if player.hitbox.colliderect(current_level.door.inflate(10, 10)):
+                        door_choice = ChoiceTextBox(DOOR_DIALOGUE, ["Yes", "No"], font)
+
+                # ---- LEVEL 1 EXIT ----
+                if isinstance(current_level, Level1) and current_level.exit_rect:
+                    if player.hitbox.colliderect(current_level.exit_rect.inflate(10, 10)):
+                        door_choice = ChoiceTextBox(["Proceed to next level?"], ["Yes", "No"], font)
+
+                # ---- LEVEL 2 TROJAN ----
+                if isinstance(current_level, Level2) and hasattr(current_level, "trojan_rect"):
+                    if player.hitbox.colliderect(current_level.trojan_rect.inflate(10, 10)):
+                         if trojan_stage < 2:
+                            txt = TROJAN_OFFER_1 if trojan_stage == 0 else TROJAN_OFFER_2
+                            trojan_dialogue = ChoiceTextBox(txt, ["OK"], font)
+                            trojan_expecting_choice = True
+                         else:
+                            trojan_dialogue = ChoiceTextBox(["I have nothing more for you.", "Good luck."], ["OK"], font)
 
 
     # ---------- NPC TIMED PROMPTS ----------
@@ -328,27 +618,16 @@ while running:
         npc_prompt_pending = False
 
     # ---------- UPDATE ----------
-    if not player_dead and not any([
+    if game_state == "PLAYING" and not player_dead and not any([
         door_choice, npc_dialogue, npc_choice_box,
         weapon_dialogue, password_box,
-        combat_choice, combat_message, death_message
+        combat_choice, combat_message, death_message,
+        trojan_dialogue, trojan_choice
     ]):
         prev_rect = player.rect.copy()
         prev_hitbox = player.hitbox.copy()
 
         player.update(pygame.key.get_pressed())
-
-        # ---- LEVEL 0 DOOR ----
-        if isinstance(current_level, Level0) and current_level.door and not door_used:
-            if player.hitbox.colliderect(current_level.door.inflate(10, 10)):
-                if pygame.key.get_pressed()[INTERACT_KEY]:
-                    door_choice = ChoiceTextBox(DOOR_DIALOGUE, ["Yes", "No"], font)
-
-        # ---- LEVEL 1 EXIT (TO LEVEL 2) ----
-        if isinstance(current_level, Level1) and current_level.exit_rect:
-            if player.hitbox.colliderect(current_level.exit_rect.inflate(10, 10)):
-                if pygame.key.get_pressed()[INTERACT_KEY] and not door_choice:
-                    door_choice = ChoiceTextBox(["Proceed to next level?"], ["Yes", "No"], font)
 
         # ---- NPC INITIAL TRIGGER ----
         if isinstance(current_level, Level1) and not npc_triggered:
@@ -364,10 +643,13 @@ while running:
                     break
 
         # ---- ENEMY TRIGGER ----
-        if isinstance(current_level, Level1) and not combat_active:
+        if (isinstance(current_level, Level1) or isinstance(current_level, Level2)) and not combat_active:
+            # Normal Enemy Triggers
             for enemy in current_level.enemies:
-                if player.hitbox.colliderect(enemy.trigger_rect):
-                    current_enemy = enemy
+                # If enemy is tagged, they are part of tag battle, don't trigger individually?
+                # Assume tagged enemies don't have individual triggers or rely on tag object.
+                if not enemy.tag and player.hitbox.colliderect(enemy.trigger_rect):
+                    current_enemies = [enemy]
                     combat_active = True
                     combat_message = ChoiceTextBox(
                         [f"{enemy.type.capitalize()}: {enemy.dialogue}"],
@@ -375,6 +657,27 @@ while running:
                         font
                     )
                     break
+            
+            # Tag Battle Trigger (Level 2)
+            if isinstance(current_level, Level2) and current_level.tag_trigger:
+                if player.hitbox.colliderect(current_level.tag_trigger):
+                    # Find tagged enemies
+                    tagged_enemies = [e for e in current_level.enemies if e.tag]
+                    if tagged_enemies:
+                        current_enemies = tagged_enemies
+                        combat_active = True
+                        combat_message = ChoiceTextBox(
+                            ["AMBUSH DETECTED.", "Multiple threads engaging."],
+                            ["OK"],
+                            font
+                        )
+                        # Disable trigger to prevent loop? 
+                        # Or maybe we assume enemies die and trigger is harmless if empty?
+                        # Better to remove it.
+                        current_level.tag_trigger = None
+                    else:
+                        # If no enemies left, maybe just remove trigger
+                        current_level.tag_trigger = None
 
         # ---- WEAPON ----
         if isinstance(current_level, Level1) and not weapon_obtained and not weapon_dialogue and not password_box:
@@ -397,36 +700,53 @@ while running:
                 break
 
     # ---------- CAMERA ----------
-    camera.update(
-        player.rect,
-        current_level.pixel_width,
-        current_level.pixel_height
-    )
+    if game_state == "PLAYING" and camera:
+        camera.update(
+            player.rect,
+            current_level.pixel_width,
+            current_level.pixel_height
+        )
 
     # ---------- DRAW ----------
     screen.fill((20, 20, 20))
-    current_level.draw(screen, camera)
-    player.draw(screen, camera)
+    
+    if game_state == "TITLE":
+        if title_menu:
+            title_menu.draw(screen)
+    else:
+        if current_level:
+            current_level.draw(screen, camera)
+        if player:
+            player.draw(screen, camera)
 
-    draw_hp_bar(screen, 20, 20, 200, 20, player.hp, player.max_hp)
-    # XP Bar (Below HP)
-    draw_xp_bar(screen, 20, 50, 200, 10, player.xp, 100)
+            draw_hp_bar(screen, 20, 20, 200, 20, player.hp, player.max_hp)
+            # XP Bar (Below HP)
+            draw_xp_bar(screen, 20, 50, 200, 10, player.xp)
 
-    if combat_active and current_enemy:
-        # Enemy HP Bar (Top Right)
-        draw_hp_bar(
-            screen,
-            WIDTH - 220, 20,
-            200, 20,
-            current_enemy.hp,
-            current_enemy.max_hp
-        )
+        if combat_active and current_enemies:
+            # Enemy HP Bars (Top Right)
+            y_offset = 20
+            for i, enemy in enumerate(current_enemies):
+                txt = f"{enemy.type} ({enemy.hp}/{enemy.max_hp})"
+                # Draw name
+                name_surf = font.render(txt, True, (255, 80, 80))
+                screen.blit(name_surf, (WIDTH - 220, y_offset - 20))
+                
+                draw_hp_bar(
+                    screen,
+                    WIDTH - 220, y_offset,
+                    200, 20,
+                    enemy.hp,
+                    enemy.max_hp
+                )
+                y_offset += 60
 
     for box in [
         door_choice, npc_dialogue, npc_choice_box,
         weapon_dialogue, password_box,
         combat_message, combat_choice,
-        death_message
+        death_message,
+        trojan_dialogue, trojan_choice
     ]:
         if box:
             box.draw(screen)

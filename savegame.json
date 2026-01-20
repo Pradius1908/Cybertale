@@ -1,0 +1,17 @@
+{
+    "player": {
+        "hp": 140,
+        "max_hp": 140,
+        "xp": 150,
+        "level": 2,
+        "base_attack": 2,
+        "next_level_xp": 300,
+        "weapon": {
+            "password": "Shaitaan@666",
+            "damage": 25,
+            "damage_modifier": 1.0,
+            "jam_chance": 0.0
+        }
+    },
+    "level_index": 2
+}

@@ -66,9 +66,10 @@ class CombatScreen:
         self.message = ChoiceTextBox(log, ["OK"], self.font)
 
     def get_player_damage(self):
+        dmg = self.player.base_attack
         if self.player.weapon:
-            return self.player.weapon.damage
-        return 4
+            dmg += self.player.weapon.damage
+        return dmg
 
     def player_dead(self):
         return False  # placeholder for later HP system

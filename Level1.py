@@ -60,9 +60,9 @@ class Level1:
                 
                 # Default to tier 1 if unspecified or invalid
                 if tier == 2:
-                    enemy_type = "honey_tier2"
+                    enemy_type = "VOX"
                 else:
-                    enemy_type = "honey_tier1"
+                    enemy_type = "COIN_THING"
                 
                 self.enemies.append(
                     Enemy(
