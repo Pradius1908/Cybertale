@@ -177,6 +177,6 @@
    </properties>
   </object>
   <object id="64" type="tag" x="2163" y="3025" width="93" height="191"/>
-  <object id="65" type="end" x="2161" y="3984" width="94" height="95"/>
+  <object id="65" type="door" x="2161" y="3984" width="94" height="95"/>
  </objectgroup>
 </map>

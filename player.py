@@ -9,6 +9,7 @@ class Player:
             "down": pygame.image.load("assets/sprites/player_down.png").convert_alpha(),
             "left": pygame.image.load("assets/sprites/player_left.png").convert_alpha(),
             "right": pygame.image.load("assets/sprites/player_right.png").convert_alpha(),
+            "dead": pygame.image.load("assets/sprites/player_dead.png").convert_alpha(),
         }
 
         self.direction = "down"
@@ -22,6 +23,7 @@ class Player:
         self.max_hp = 120
         self.hp = 120
         self.base_attack = 0  # Start at 0 so total damage = weapon damage initially
+        self.base_defense = 0 # Base defense
         
         # ---- LEVEL SYSTEM ----
         self.level = 1
@@ -56,7 +58,8 @@ class Player:
         self.max_hp += 20
         self.hp = self.max_hp
         self.base_attack += 2
-        print(f"Level Up! Level: {self.level}, Max HP: {self.max_hp}, Attack: {self.base_attack}, Next XP: {self.next_level_xp}")
+        self.base_defense += 1
+        print(f"Level Up! Level: {self.level}, Max HP: {self.max_hp}, Attack: {self.base_attack}, Defense: {self.base_defense}, Next XP: {self.next_level_xp}")
 
     def teleport(self, pos):
         self.rect.center = pos
@@ -69,6 +72,7 @@ class Player:
             "xp": self.xp,
             "level": self.level,
             "base_attack": self.base_attack,
+            "base_defense": self.base_defense,
             "next_level_xp": self.next_level_xp,
             "weapon": self.weapon.to_dict() if self.weapon else None
         }
@@ -79,6 +83,7 @@ class Player:
         self.xp = data.get("xp", 0)
         self.level = data.get("level", 1)
         self.base_attack = data.get("base_attack", 0)
+        self.base_defense = data.get("base_defense", 0)
         self.next_level_xp = data.get("next_level_xp", 100)
         
         wd = data.get("weapon")

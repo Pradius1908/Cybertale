@@ -19,16 +19,16 @@ ENEMY_TYPES = {
     },
     "WORM": {
         "sprite": "assets/sprites/worm.png",
-        "max_hp": 90,
+        "max_hp": 80,
         "damage": 25,
         "xp_reward": 200,
         "lore": "A self-replicating burrower. Its attacks corrupt your drivers, causing weapon malfunctions.",
         "dialogue": "I... burrow... deep...",
-        "backfire_chance": 0.5  # 50% chance to cause backfire on hit
+        "backfire_chance": 0.45  # 50% chance to cause backfire on hit
     },
     "VIRUS": {
         "sprite": "assets/sprites/virus.png",
-        "max_hp": 120,
+        "max_hp": 100,
         "damage": 30,
         "xp_reward": 500,
         "lore": "A pure malicious payload. Extremely dangerous.",
@@ -54,6 +54,8 @@ class Enemy:
         self.backfire_chance = data.get("backfire_chance", 0.0)
         
         self.tag = False # Default tag status
+        self.alive = True # Valid flag
+        self.recharging = False # For Virus cooldown
 
         self.trigger_rect = pygame.Rect(
             self.rect.x + 8,
@@ -63,4 +65,5 @@ class Enemy:
         )
 
     def draw(self, screen, camera):
-        screen.blit(self.image, camera.apply(self.rect))
+        if self.alive:
+            screen.blit(self.image, camera.apply(self.rect))

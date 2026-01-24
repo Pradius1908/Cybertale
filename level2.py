@@ -23,6 +23,7 @@ class Level2:
         self.walls = []
         self.enemies = []
         self.tag_trigger = None
+        self.door = None
         self.spawn_pos = (200, 200)
 
         for obj in self.tmx.objects:
@@ -44,6 +45,9 @@ class Level2:
                 self.trojan_pos = (obj.x, obj.y)
                 # Make solid
                 self.walls.append(self.trojan_rect)
+
+            elif obj.type == "door":
+                self.door = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
             
             elif obj.type == "tag":
                 self.tag_trigger = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
