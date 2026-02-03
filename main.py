@@ -371,7 +371,12 @@ while running:
                         )
                     # Victory Condition (Combat ended)
                     elif not combat_active:
-                         last_battle_time = now # Set cooldown when box closes
+                        last_battle_time = now # Set cooldown when box closes
+                        # Restore Level Music
+                        if isinstance(current_level, Level2):
+                            play_music("level_2.mp3")
+                        else:
+                            play_music("base_levels.mp3")
                     pass
 
         # ---- TARGET SELECTION (Reuse Combat Choice) ----
@@ -482,6 +487,7 @@ while running:
                              current_enemies = []
                              player_dead = True
                              player.image = player.sprites["dead"]
+                             play_music("death.mp3")
                              death_message = ChoiceTextBox(
                                  ["Fatal Error: No Weapon. Respawn?"],
                                  ["Yes"],
@@ -692,15 +698,14 @@ while running:
                     
                     current_enemies = alive_enemies
 
-                    if not current_enemies:
+                    current_enemies = alive_enemies
+                    
+                    if not current_enemies and not player_dead:
                         # VICTORY
                         combat_active = False
                         
-                        # Return to level music
-                        if isinstance(current_level, Level2):
-                            play_music("level_2.mp3")
-                        else:
-                            play_music("base_levels.mp3")
+                        # Play Victory Music
+                        play_music("victory.mp3")
 
                         # Show logs if present (Enemy terminated, XP gained, etc.)
                         if log:
@@ -740,14 +745,16 @@ while running:
                          else:
                             trojan_dialogue = ChoiceTextBox(["I have nothing more for you.", "Good luck."], None, font)
                 
+                 # ---- LEVEL 2 END SCREEN ----
                 # ---- LEVEL 2 END SCREEN ----
                 if isinstance(current_level, Level2) and current_level.door:
-                     if player.hitbox.colliderect(current_level.door.inflate(10, 10)):
-                         end_dialogue = ChoiceTextBox(
-                             ["To Be Continued...", "Thanks for Playing!"],
-                             None,
-                             font
-                         )
+                    if player.hitbox.colliderect(current_level.door.inflate(10, 10)):
+                        play_music("ending.mp3")
+                        end_dialogue = ChoiceTextBox(
+                              ["To Be Continued...", "Thanks for Playing!"],
+                              None,
+                              font
+                        )
 
 
     # ---------- NPC TIMED PROMPTS ----------
