@@ -1,14 +1,14 @@
 {
     "player": {
-        "hp": 140,
-        "max_hp": 140,
-        "xp": 150,
-        "level": 2,
-        "base_attack": 2,
-        "base_defense": 1,
-        "next_level_xp": 300,
+        "hp": 120,
+        "max_hp": 120,
+        "xp": 0,
+        "level": 1,
+        "base_attack": 0,
+        "base_defense": 0,
+        "next_level_xp": 100,
         "weapon": {
-            "password": "Pradyumna$1",
+            "password": "Kali@1908*",
             "damage": 25,
             "damage_modifier": 1.0,
             "jam_chance": 0.0

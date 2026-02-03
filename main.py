@@ -26,10 +26,18 @@ camera = None
 
 game_state = "TITLE"
 title_menu = ChoiceTextBox(
-    ["CYBERTALE", "Select an option:"],
+    ["Select an option:"],
     ["New Game", "Continue", "Exit"],
     font
 )
+
+# Load Title Background
+try:
+    title_bg = pygame.image.load("assets/title/title.png").convert()
+    title_bg = pygame.transform.scale(title_bg, (WIDTH, HEIGHT))
+except Exception as e:
+    print(f"Error loading title background: {e}")
+    title_bg = None
 
 # Temp init for menu drawing if needed, but we'll handle it in loop
 camera = Camera(WIDTH, HEIGHT) # Needed for sizing? No, Title uses screen coords.
@@ -46,7 +54,14 @@ DOOR_DIALOGUE = [
     "Exploit it?"
 ]
 
+INTRO_LORE = [
+    "You find yourself in a strange (digital?) cell.",
+    "You do not know how you ended up here, but the last thing you remember was downloading a game off a shady website.",
+    "You must find a way out."
+]
+
 # ---------- NPC PROMPTS ----------
+intro_dialogue = None
 npc_dialogue = None
 npc_choice_box = None
 npc_triggered = False
@@ -117,6 +132,20 @@ def get_player_damage(player):
         dmg += player.weapon.damage
     return dmg
 
+current_music = None
+def play_music(filename):
+    global current_music
+    if current_music == filename:
+        return
+    
+    try:
+        path = f"music/{filename}"
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.play(-1)
+        current_music = filename
+    except Exception as e:
+        print(f"Error playing music {filename}: {e}")
+
 def draw_hp_bar(screen, x, y, w, h, hp, max_hp):
     ratio = max(0, hp / max_hp)
     red = int(255 * (1 - ratio))
@@ -140,6 +169,7 @@ def draw_xp_bar(screen, x, y, w, h, xp, max_xp=100):
     screen.blit(lvl_text, (x + w + 10, y - 2))
 
 # ---------- MAIN LOOP ----------
+play_music("title.mp3")
 running = True
 while running:
     clock.tick(FPS)
@@ -170,6 +200,11 @@ while running:
                             door_used = False
                             weapon_obtained = False
                             
+                            play_music("base_levels.mp3")
+
+                            # Trigger Intro Lore
+                            intro_dialogue = ChoiceTextBox(INTRO_LORE, None, font)
+                            
                         elif choice == "Continue":
                             data = SaveManager.load_game()
                             if data:
@@ -183,6 +218,11 @@ while running:
                                 player.load_data(data["player"])
                                 camera = Camera(WIDTH, HEIGHT)
                                 game_state = "PLAYING"
+                                
+                                if idx == 2:
+                                    play_music("level_2.mp3")
+                                else:
+                                    play_music("base_levels.mp3")
                                 
                                 # Restore logic flags if needed?
                                 # Simplified: If level > 0, assume door used.
@@ -198,6 +238,14 @@ while running:
                         elif choice == "Exit":
                             running = False
             continue # Skip other events if in TITLE
+
+            continue # Skip other events if in TITLE
+
+        # ---- INTRO LORE ----
+        if intro_dialogue and event.type == pygame.KEYDOWN:
+            if event.key == INTERACT_KEY:
+                if intro_dialogue.next_page():
+                    intro_dialogue = None
 
         # ---- DOOR ----
         if door_choice and event.type == pygame.KEYDOWN:
@@ -222,6 +270,7 @@ while running:
                             player.teleport(current_level.spawn_pos)
                             camera.reset()
                             SaveManager.save_game(player, 2)
+                            play_music("level_2.mp3")
 
         # ---- NPC DIALOGUE ----
         elif npc_dialogue and event.type == pygame.KEYDOWN:
@@ -247,6 +296,8 @@ while running:
 
                     if result == "Yes":
                         player_dead = True
+                        player.image = player.sprites["dead"]
+                        play_music("death.mp3")
                         death_message = ChoiceTextBox(
                             ["Fatal Error. Respawn?"],
                             ["Yes"],
@@ -292,17 +343,17 @@ while running:
                                     player.weapon.damage_modifier = 0.5
                                     print("Weapon damage reduced by 50%")
                                 trojan_stage = 1
-                                trojan_dialogue = ChoiceTextBox([" optimization_complete.exe executed."], ["OK"], font) # User feedback
+                                trojan_dialogue = ChoiceTextBox([" optimization_complete.exe executed."], None, font) # User feedback
                             elif trojan_stage == 1:
                                 # Second Offer: Jamming
                                 if player.weapon:
                                     player.weapon.jam_chance = 0.3
                                     print("Weapon jam chance set to 30%")
                                 trojan_stage = 2
-                                trojan_dialogue = ChoiceTextBox([" kernel_patch.dll installed."], ["OK"], font) # User feedback
+                                trojan_dialogue = ChoiceTextBox([" kernel_patch.dll installed."], None, font) # User feedback
                         else:
                             # Not enough XP
-                             trojan_dialogue = ChoiceTextBox([f"Error: Insufficient resources. Need {cost} XP."], ["OK"], font)
+                             trojan_dialogue = ChoiceTextBox([f"Error: Insufficient resources. Need {cost} XP."], None, font)
                     else:
                         # Refused
                         pass
@@ -381,9 +432,9 @@ while running:
 
                              player.hp -= total_dmg
                              if total_dmg > 0:
-                                log.append(f"You took {total_dmg} damage.")
+                                 log.append(f"You took {total_dmg} damage.")
                              
-                             combat_message = ChoiceTextBox(log, ["OK"], font)
+                             combat_message = ChoiceTextBox(log, None, font)
                              
                              if player.hp <= 0:
                                  combat_active = False
@@ -393,6 +444,7 @@ while running:
                                  player_dead = True
                                  player.image = player.sprites["dead"]
                                  combat_message = None # Clear priority message
+                                 play_music("death.mp3")
                                  death_message = ChoiceTextBox(
                                      ["SYSTEM FAILURE. Respawn?"],
                                      ["Yes"],
@@ -447,7 +499,7 @@ while running:
                          combat_message = ChoiceTextBox(
                              ["You defend yourself.",
                               f"You took {dmg} damage."],
-                             ["OK"],
+                             None,
                              font
                          )
 
@@ -458,6 +510,7 @@ while running:
                              player_dead = True
                              player.image = player.sprites["dead"]
                              combat_message = None # Clear priority message
+                             play_music("death.mp3")
                              death_message = ChoiceTextBox(
                                  ["SYSTEM FAILURE. Respawn?"],
                                  ["Yes"],
@@ -490,6 +543,11 @@ while running:
                         player.teleport(current_level.spawn_pos)
                         camera.reset()
                         
+                        if isinstance(current_level, Level2):
+                            play_music("level_2.mp3")
+                        else:
+                            play_music("base_levels.mp3")
+
                         # Reset all enemies HP and Alive status
                         if current_level and hasattr(current_level, "enemies"):
                             for e in current_level.enemies:
@@ -504,6 +562,11 @@ while running:
                         password_box = None
                         
                         trojan_stage = 0
+                        
+                        # Reset Weapon Stats
+                        if player.weapon:
+                            player.weapon.damage_modifier = 1.0
+                            player.weapon.jam_chance = 0.0
 
         # ---- WEAPON ----
         elif weapon_dialogue and event.type == pygame.KEYDOWN:
@@ -590,6 +653,7 @@ while running:
                         player_dead = True
                         player.image = player.sprites["dead"]
                         combat_message = None # Clear priority message
+                        play_music("death.mp3")
                         death_message = ChoiceTextBox(
                             ["SYSTEM FAILURE. Respawn?"],
                             ["Yes"],
@@ -632,16 +696,22 @@ while running:
                         # VICTORY
                         combat_active = False
                         
+                        # Return to level music
+                        if isinstance(current_level, Level2):
+                            play_music("level_2.mp3")
+                        else:
+                            play_music("base_levels.mp3")
+
                         # Show logs if present (Enemy terminated, XP gained, etc.)
                         if log:
-                            combat_message = ChoiceTextBox(log, ["OK"], font)
+                            combat_message = ChoiceTextBox(log, None, font)
                         else:
                             # No logs, just end immediately (rare)
                             last_battle_time = pygame.time.get_ticks() 
                             combat_message = None
                     else:
                         combat_active = True
-                        combat_message = ChoiceTextBox(log, ["OK"], font)
+                        combat_message = ChoiceTextBox(log, None, font)
 
                 password_box = None
                 password_mode = None
@@ -665,17 +735,17 @@ while running:
                     if player.hitbox.colliderect(current_level.trojan_rect.inflate(10, 10)):
                          if trojan_stage < 2:
                             txt = TROJAN_OFFER_1 if trojan_stage == 0 else TROJAN_OFFER_2
-                            trojan_dialogue = ChoiceTextBox(txt, ["OK"], font)
+                            trojan_dialogue = ChoiceTextBox(txt, None, font)
                             trojan_expecting_choice = True
                          else:
-                            trojan_dialogue = ChoiceTextBox(["I have nothing more for you.", "Good luck."], ["OK"], font)
+                            trojan_dialogue = ChoiceTextBox(["I have nothing more for you.", "Good luck."], None, font)
                 
                 # ---- LEVEL 2 END SCREEN ----
                 if isinstance(current_level, Level2) and current_level.door:
                      if player.hitbox.colliderect(current_level.door.inflate(10, 10)):
                          end_dialogue = ChoiceTextBox(
                              ["To Be Continued...", "Thanks for Playing!"],
-                             ["OK"],
+                             None,
                              font
                          )
 
@@ -685,7 +755,7 @@ while running:
         if npc_prompt_count < len(NPC_PROMPTS):
             npc_dialogue = ChoiceTextBox(
                 NPC_PROMPTS[npc_prompt_count],
-                ["OK"],
+                None,
                 font
             )
             npc_prompt_count += 1
@@ -693,7 +763,7 @@ while running:
 
     # ---------- UPDATE ----------
     if game_state == "PLAYING" and not player_dead and not any([
-        door_choice, npc_dialogue, npc_choice_box,
+        intro_dialogue, door_choice, npc_dialogue, npc_choice_box,
         weapon_dialogue, password_box,
         combat_choice, combat_message, death_message,
         trojan_dialogue, trojan_choice, end_dialogue
@@ -709,7 +779,7 @@ while running:
                 if player.hitbox.colliderect(trig):
                     npc_dialogue = ChoiceTextBox(
                         NPC_PROMPTS[0],
-                        ["OK"],
+                        None,
                         font
                     )
                     npc_triggered = True
@@ -727,9 +797,16 @@ while running:
                     if enemy.alive and not enemy.tag and player.hitbox.colliderect(enemy.trigger_rect):
                         current_enemies = [enemy]
                         combat_active = True
+                        
+                        # Boss Music Logic
+                        if enemy.type == "VOX":
+                            play_music("vox.mp3")
+                        elif enemy.type == "COIN_THING":
+                            play_music("coin_thing.mp3")
+
                         combat_message = ChoiceTextBox(
                             [f"{enemy.type.capitalize()}: {enemy.dialogue}"],
-                            ["OK"],
+                            None,
                             font
                         )
                         break
@@ -742,9 +819,10 @@ while running:
                         if tagged_enemies:
                             current_enemies = tagged_enemies
                             combat_active = True
+                            play_music("tag_battle.mp3")
                             combat_message = ChoiceTextBox(
                                 ["AMBUSH DETECTED.", "Multiple threads engaging."],
-                                ["OK"],
+                                None,
                                 font
                             )
                             # Do NOT remove trigger if we want re-battles?
@@ -763,7 +841,7 @@ while running:
                     # Do not hide weapon yet
                     weapon_dialogue = ChoiceTextBox(
                         WEAPON_DIALOGUE,
-                        ["OK"],
+                        None,
                         font
                     )
                     break
@@ -787,6 +865,8 @@ while running:
     screen.fill((20, 20, 20))
     
     if game_state == "TITLE":
+        if title_bg:
+            screen.blit(title_bg, (0, 0))
         if title_menu:
             title_menu.draw(screen)
     else:
@@ -823,6 +903,7 @@ while running:
                 y_offset += 60
 
     for box in [
+        intro_dialogue,
         door_choice, npc_dialogue, npc_choice_box,
         weapon_dialogue, password_box,
         combat_message, combat_choice,

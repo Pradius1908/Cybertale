@@ -5,10 +5,10 @@ class ChoiceTextBox:
     def __init__(self, texts, choices, font):
         """
         texts   : list of strings (dialogue pages before choice)
-        choices : list of strings (e.g. ["Yes", "No"])
+        choices : list of strings (e.g. ["Yes", "No"]) or None
         """
         self.texts = texts
-        self.choices = choices
+        self.choices = choices if choices else []
         self.font = font
 
         self.page = 0
@@ -42,6 +42,9 @@ class ChoiceTextBox:
         return True       # ready to choose
 
     def move_selection(self, direction):
+        if not self.choices:
+            return
+
         if direction == "left":
             self.selected = max(0, self.selected - 1)
         elif direction == "right":
@@ -49,6 +52,8 @@ class ChoiceTextBox:
 
     def confirm(self):
         self.visible = False
+        if not self.choices:
+            return None
         return self.choices[self.selected]
 
     # ---------- DRAW ----------
@@ -67,7 +72,7 @@ class ChoiceTextBox:
             y += surf.get_height() + 6
 
         # Only show choices on last page
-        if self.page == len(self.texts) - 1:
+        if self.page == len(self.texts) - 1 and self.choices:
             x = self.rect.centerx - 100
             y = self.rect.bottom - 40
 
